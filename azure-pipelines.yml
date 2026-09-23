@@ -11,9 +11,10 @@ steps:
 # 1. Checkout source code
 - checkout: self
   displayName: 'Checkout Source Code'
+  fetchDepth: 0
 
 
-# 2. Install Python
+# 2. Setup Python
 - task: UsePythonVersion@0
   inputs:
     versionSpec: '3.8'
@@ -27,35 +28,50 @@ steps:
   displayName: 'Upgrade pip'
 
 
-# 4. Install project dependencies
+# 4. Install dependencies
 - script: |
-    pip install -r requirement.txt
+    python -m pip install -r requirement.txt
   displayName: 'Install Dependencies'
 
 
-# 5. Install unit test dependencies
+# 5. Install test dependencies
 - script: |
-    pip install pytest
-    pip install pytest-html
-  displayName: 'Install Unit Test Dependencies'
+    python -m pip install pytest pytest-html
+  displayName: 'Install Test Dependencies'
 
 
-# 6. Check Python files
+# 6. Prepare SonarQube Cloud
+- task: SonarCloudPrepare@4
+  displayName: 'Prepare SonarQube Cloud Analysis'
+  inputs:
+    SonarCloud: 'SonarCloud-House-Project'
+    organization: 'amala1602'
+    scannerMode: 'cli'
+    configMode: 'manual'
+    cliProjectKey: 'House-Price-Prediction-3-'
+    cliProjectName: 'House Price Prediction'
+    cliSources: '.'
+    extraProperties: |
+      sonar.python.version=3.8
+      sonar.exclusions=**/__pycache__/**,**/.pytest_cache/**,**/test-results/**
+
+
+# 7. Compile Python modules
 - script: |
     python -m py_compile app.py
     python -m py_compile house.py
-  displayName: 'Validate Python Code'
+  displayName: 'Compile Python Modules'
 
 
-# 7. Create test result folder
+# 8. Create test results directory
 - script: |
     mkdir -p test-results
-  displayName: 'Create Test Result Folder'
+  displayName: 'Create Test Results Directory'
 
 
-# 8. Run 50 unit tests
+# 9. Run tests
 - script: |
-    pytest tests/test_app_50_cases.py \
+    python -m pytest test_app_50_cases.py \
       -v \
       -ra \
       --junitxml=test-results/junit.xml \
@@ -65,7 +81,7 @@ steps:
   continueOnError: true
 
 
-# 9. Publish unit test results
+# 10. Publish test results
 - task: PublishTestResults@2
   condition: always()
   inputs:
@@ -73,22 +89,28 @@ steps:
     testResultsFiles: 'test-results/junit.xml'
     testRunTitle: 'House Price Prediction Unit Tests'
     failTaskOnFailedTests: false
-  displayName: 'Publish Unit Test Results'
+  displayName: 'Publish Test Results'
 
 
-# 10. Publish HTML test report
+# 11. Publish HTML test report
 - task: PublishPipelineArtifact@1
   condition: always()
   inputs:
     targetPath: 'test-results'
-    artifact: 'unit-test-report'
+    artifact: 'test-reports'
     publishLocation: 'pipeline'
-  displayName: 'Publish Unit Test Report'
+  displayName: 'Publish Test Reports'
 
 
-# 11. Start Flask application
-- script: |
-    python app.py &
-    sleep 10
-    echo "Flask application started successfully"
-  displayName: 'Start Flask Application'
+# 12. Run SonarQube Cloud analysis
+- task: SonarCloudAnalyze@4
+  displayName: 'Run SonarQube Cloud Analysis'
+  inputs:
+    jdkversion: 'JAVA_HOME_17_X64'
+
+
+# 13. Publish Quality Gate
+- task: SonarCloudPublish@4
+  displayName: 'Publish SonarQube Quality Gate'
+  inputs:
+    pollingTimeoutSec: '300'
